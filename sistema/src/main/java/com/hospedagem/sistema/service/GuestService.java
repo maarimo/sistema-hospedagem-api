@@ -3,6 +3,10 @@ package com.hospedagem.sistema.service;
 import com.hospedagem.sistema.domain.Guest;
 import com.hospedagem.sistema.domain.GuestStatus;
 import com.hospedagem.sistema.domain.Room;
+import com.hospedagem.sistema.dto.GuestRequestDTO;
+import com.hospedagem.sistema.dto.GuestResponseDTO;
+import com.hospedagem.sistema.exception.BusinessException;
+import com.hospedagem.sistema.exception.ResourceNotFoundException;
 import com.hospedagem.sistema.repository.GuestRepository;
 import com.hospedagem.sistema.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,45 +21,62 @@ public class GuestService {
     private final GuestRepository guestRepository;
     private final RoomRepository roomRepository;
 
-    //criar hospede
-    public Guest create(Guest guest, Long roomId) {
+    public GuestResponseDTO create(GuestRequestDTO dto) {
 
         // 1. validar CPF único
-        if (guestRepository.findByCpf(guest.getCpf()).isPresent()) {
-            throw new RuntimeException("CPF already exists");
+        if (guestRepository.findByCpf(dto.cpf()).isPresent()) {
+            throw new BusinessException("CPF already exists");
         }
 
         // 2. buscar quarto
-        Room room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new RuntimeException("Room not found"));
+        Room room = roomRepository.findById(dto.roomId())
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found"));
 
-        // 3. associar quarto
+        // 3. converter DTO → Entity
+        Guest guest = new Guest();
+        guest.setName(dto.name());
+        guest.setCpf(dto.cpf());
+        guest.setPhone(dto.phone());
+        guest.setStatus(GuestStatus.PENDING);
         guest.setRoom(room);
 
-        // 4. status inicial
-        guest.setStatus(GuestStatus.PENDING);
+        // 4. salvar
+        Guest saved = guestRepository.save(guest);
 
-        // 5. salvar
-        return guestRepository.save(guest);
+        // 5. converter Entity → DTO
+        return toResponse(saved);
     }
 
-    //buscar todos
-    public List<Guest> findAll() {
-        return guestRepository.findAll();
+    public List<GuestResponseDTO> findAll() {
+        return guestRepository.findAll()
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
-    //buscar por id
-    public Guest findById(Long id) {
-        return guestRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Guest not found"));
+    public GuestResponseDTO findById(Long id) {
+        Guest guest = guestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Guest not found"));
+
+        return toResponse(guest);
     }
 
-    //delete
     public void delete(Long id) {
         if (!guestRepository.existsById(id)) {
-            throw new RuntimeException("Guest not found");
+            throw new ResourceNotFoundException("Guest not found");
         }
         guestRepository.deleteById(id);
     }
 
+    // 🔥 mapper manual (simples e profissional)
+    private GuestResponseDTO toResponse(Guest guest) {
+        return new GuestResponseDTO(
+                guest.getId(),
+                guest.getName(),
+                guest.getCpf(),
+                guest.getPhone(),
+                guest.getStatus().name(),
+                guest.getRoom() != null ? guest.getRoom().getNumber() : null
+        );
+    }
 }
